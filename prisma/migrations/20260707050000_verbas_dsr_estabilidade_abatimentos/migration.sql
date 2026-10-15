@@ -1,0 +1,9 @@
+-- AlterTable
+ALTER TABLE "LaborCalculation" ADD COLUMN     "amountsAlreadyPaid" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "applyDsrOnExtra" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "deductionsValue" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "dsrValue" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "fgtsAlreadyDeposited" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "stabilityMonths" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "stabilityValue" DECIMAL(10,2) NOT NULL DEFAULT 0;
+

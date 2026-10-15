@@ -1,0 +1,66 @@
+{
+  "name": "jurispro-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.26.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "@sentry-internal/node-cpu-profiler",
+      "argon2",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "homolog": "tsx watch --env-file=.env.homolog src/server.ts",
+    "test:watch": "vitest",
+    "test": "dotenv -e .env.test  prisma migrate deploy && prisma generate && dotenv -e .env.test -- vitest run",
+    "lint:fix": "biome check --write ./src",
+    "build": "tsup ./src/server.ts --sourcemap",
+    "build:prod": "tsup ./src/server.ts --sourcemap && pnpm sentry:sourcemaps",
+    "start:prod": "pm2-runtime start ecosystem.config.js",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org $SENTRY_ORG --project $SENTRY_PROJECT ./dist && sentry-cli sourcemaps upload --org $SENTRY_ORG --project $SENTRY_PROJECT ./dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1044.0",
+    "@aws-sdk/s3-request-presigner": "^3.1044.0",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/swagger": "^9.7.0",
+    "@prisma/client": "6.17.1",
+    "@scalar/fastify-api-reference": "^1.49.1",
+    "@sentry/node": "10.70.0",
+    "@sentry/profiling-node": "10.70.0",
+    "argon2": "^0.44.0",
+    "docxtemplater": "^3.68.7",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.2",
+    "fastify-plugin": "^5.1.0",
+    "fastify-type-provider-zod": "^6.1.0",
+    "node-cron": "^4.2.1",
+    "pizzip": "^3.2.0",
+    "pm2": "^6.0.8",
+    "prisma": "6.17.1",
+    "resend": "^6.12.3",
+    "stripe": "^22.1.0",
+    "tsx": "^4.23.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.8",
+    "@types/node": "^25.6.2",
+    "@types/node-cron": "^3.0.11",
+    "dotenv-cli": "^11.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite-tsconfig-paths": "^6.0.5",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Typecheck + tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: jurispro_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write .env.test
+        run: |
+          openssl genpkey \
+            -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:2048 \
+            -out /tmp/priv.pem
+
+          openssl rsa \
+            -pubout \
+            -in /tmp/priv.pem \
+            -out /tmp/pub.pem
+
+          cat > .env.test <<EOF
+          ENV=test
+          PORT=3333
+          HOST=0.0.0.0
+          DATABASE_URL=postgresql://test:test@localhost:5433/jurispro_test?schema=public
+          DIRECT_URL=postgresql://test:test@localhost:5433/jurispro_test?schema=public
+          CLIENT_URL=http://localhost:5173
+          JWT_PRIVATE_KEY=$(base64 -w0 /tmp/priv.pem)
+          JWT_PUBLIC_KEY=$(base64 -w0 /tmp/pub.pem)
+          FGTS_RATE=0.08
+          MINIMUM_WAGE=1621
+          R2_ACCOUNT_ID=test
+          R2_ACCESS_KEY_ID=test
+          R2_SECRET_ACCESS_KEY=test
+          R2_BUCKET_NAME=test-bucket
+          EOF
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        run: pnpm exec biome check ./src
+        continue-on-error: true
+
+      - name: Tests
+        run: pnpm test

@@ -1,0 +1,548 @@
+import {
+  CASE_PHASE_LABELS,
+  calcMoney,
+  clientDocument,
+  clientName,
+  dec,
+  fmtDate,
+  TERMINATION_LABELS,
+} from './helpers'
+import type { PlaceholderDef } from './types'
+
+export const PLACEHOLDER_REGISTRY: PlaceholderDef[] = [
+  // ── Cliente ────────────────────────────────────────────────────────────────
+  {
+    key: 'clientName',
+    label: 'Nome do cliente',
+    description: 'Nome do reclamante',
+    group: 'cliente',
+    source: 'client',
+    example: 'João da Silva',
+    resolve: clientName,
+  },
+  {
+    key: 'clientDocument',
+    label: 'CPF do cliente',
+    description: 'CPF do reclamante',
+    group: 'cliente',
+    source: 'client',
+    example: '123.456.789-00',
+    resolve: clientDocument,
+  },
+  {
+    key: 'observations',
+    label: 'Observações',
+    description: 'Observações do cálculo',
+    group: 'cliente',
+    source: 'calculation',
+    example: '',
+    resolve: (ctx) => String(ctx.calculation?.observations ?? ''),
+  },
+  // ── Contrato ─────────────────────────────────────────────────────────────
+  {
+    key: 'startDate',
+    label: 'Data de admissão',
+    description: 'Início do contrato',
+    group: 'contrato',
+    source: 'calculation',
+    example: '01/02/2020',
+    resolve: (ctx) => fmtDate(ctx.calculation?.startDate as Date),
+  },
+  {
+    key: 'endDate',
+    label: 'Data de rescisão',
+    description: 'Fim do contrato',
+    group: 'contrato',
+    source: 'calculation',
+    example: '15/11/2025',
+    resolve: (ctx) => fmtDate(ctx.calculation?.endDate as Date),
+  },
+  {
+    key: 'terminationType',
+    label: 'Tipo de rescisão',
+    description: 'Modalidade da rescisão',
+    group: 'contrato',
+    source: 'calculation',
+    example: 'Rescisão sem justa causa',
+    resolve: (ctx) =>
+      TERMINATION_LABELS[String(ctx.calculation?.terminationType ?? '')] ??
+      String(ctx.calculation?.terminationType ?? '—'),
+  },
+  {
+    key: 'priorNoticeWorked',
+    label: 'Aviso prévio trabalhado?',
+    description: 'Se o aviso prévio foi trabalhado ou indenizado',
+    group: 'contrato',
+    source: 'calculation',
+    example: 'Indenizado',
+    resolve: (ctx) =>
+      ctx.calculation?.priorNoticeWorked ? 'Trabalhado' : 'Indenizado',
+  },
+  {
+    key: 'priorNoticeDate',
+    label: 'Data do aviso prévio',
+    description: 'Data do aviso prévio',
+    group: 'contrato',
+    source: 'calculation',
+    example: '01/11/2025',
+    resolve: (ctx) => fmtDate(ctx.calculation?.priorNoticeDate as Date),
+  },
+  {
+    key: 'baseSalary',
+    label: 'Salário base',
+    description: 'Salário base do contrato',
+    group: 'contrato',
+    source: 'calculation',
+    example: '2.474,51',
+    resolve: calcMoney('baseSalary'),
+  },
+  {
+    key: 'lastSalary',
+    label: 'Último salário',
+    description: 'Última remuneração',
+    group: 'contrato',
+    source: 'calculation',
+    example: '2.881,72',
+    resolve: calcMoney('lastSalary'),
+  },
+  {
+    key: 'lastThreeSalariesAvg',
+    label: 'Média últimos 3 salários',
+    description: 'Base do seguro-desemprego',
+    group: 'contrato',
+    source: 'calculation',
+    example: '2.881,72',
+    resolve: calcMoney('lastThreeSalariesAvg'),
+  },
+  {
+    key: 'extraHours',
+    label: 'Horas extras (qtd)',
+    description: 'Quantidade de horas extras',
+    group: 'contrato',
+    source: 'calculation',
+    example: '40h',
+    resolve: (ctx) =>
+      ctx.calculation?.extraHours
+        ? `${dec(ctx.calculation, 'extraHours')}h`
+        : '',
+  },
+  {
+    key: 'nightHours',
+    label: 'Horas noturnas (qtd)',
+    description: 'Quantidade de horas noturnas',
+    group: 'contrato',
+    source: 'calculation',
+    example: '20h',
+    resolve: (ctx) =>
+      ctx.calculation?.nightHours
+        ? `${dec(ctx.calculation, 'nightHours')}h`
+        : '',
+  },
+  {
+    key: 'insalubrityLevel',
+    label: 'Grau de insalubridade',
+    description: 'Percentual de insalubridade',
+    group: 'contrato',
+    source: 'calculation',
+    example: '20%',
+    resolve: (ctx) =>
+      ctx.calculation?.insalubrityLevel
+        ? `${ctx.calculation.insalubrityLevel}%`
+        : '',
+  },
+  {
+    key: 'dangerousWork',
+    label: 'Periculosidade?',
+    description: 'Se há adicional de periculosidade',
+    group: 'contrato',
+    source: 'calculation',
+    example: 'Sim (30%)',
+    resolve: (ctx) => (ctx.calculation?.dangerousWork ? 'Sim (30%)' : 'Não'),
+  },
+  {
+    key: 'unpaid13ths',
+    label: '13º não pagos (qtd)',
+    description: 'Quantidade de 13º não pagos',
+    group: 'contrato',
+    source: 'calculation',
+    example: '0',
+    resolve: (ctx) => String(ctx.calculation?.unpaid13ths ?? 0),
+  },
+  {
+    key: 'vacationCount',
+    label: 'Férias (qtd)',
+    description: 'Quantidade de férias',
+    group: 'contrato',
+    source: 'calculation',
+    example: '0',
+    resolve: (ctx) => String(ctx.calculation?.vacationCount ?? 0),
+  },
+  {
+    key: 'vacationVencidasCount',
+    label: 'Férias vencidas (qtd)',
+    description: 'Quantidade de férias vencidas',
+    group: 'contrato',
+    source: 'calculation',
+    example: '0',
+    resolve: (ctx) => String(ctx.calculation?.vacationVencidasCount ?? 0),
+  },
+  // ── Verbas ───────────────────────────────────────────────────────────────
+  ...(
+    [
+      ['priorNoticeValue', 'Aviso prévio (R$)', 'Valor do aviso prévio'],
+      [
+        'thirteenthSalaryValue',
+        '13º salário (R$)',
+        'Valor do 13º proporcional',
+      ],
+      ['vacationValue', 'Férias + 1/3 (R$)', 'Valor das férias'],
+      [
+        'doubleVacationValue',
+        'Férias em dobro (R$)',
+        'Férias vencidas em dobro',
+      ],
+      ['fgtsValue', 'FGTS (R$)', 'Valor do FGTS'],
+      ['fgtsFineValue', 'Multa FGTS 40% (R$)', 'Multa de 40% do FGTS'],
+      [
+        'unemploymentInsuranceValue',
+        'Seguro-desemprego (R$)',
+        'Valor do seguro-desemprego',
+      ],
+      ['extraHoursValue', 'Horas extras (R$)', 'Valor das horas extras'],
+      [
+        'nightAdditionalValue',
+        'Adicional noturno (R$)',
+        'Valor do adicional noturno',
+      ],
+      ['insalubrityValue', 'Insalubridade (R$)', 'Valor da insalubridade'],
+      ['dangerousWorkValue', 'Periculosidade (R$)', 'Valor da periculosidade'],
+      ['art477FineValue', 'Multa Art. 477 (R$)', 'Multa do art. 477 CLT'],
+      ['saldoSalarioValue', 'Saldo de salário (R$)', 'Saldo de salário'],
+      ['reflexo13thValue', 'Reflexo 13º (R$)', 'Reflexo em 13º'],
+      ['reflexoVacationValue', 'Reflexo férias (R$)', 'Reflexo em férias'],
+      ['reflexoFGTSValue', 'Reflexo FGTS (R$)', 'Reflexo em FGTS'],
+      [
+        'reflexoMultaFGTSValue',
+        'Reflexo multa FGTS (R$)',
+        'Reflexo na multa FGTS',
+      ],
+      ['art467Value', 'Multa Art. 467 (R$)', 'Multa do art. 467 CLT (50%)'],
+      [
+        'salaryDifferenceValue',
+        'Diferenças salariais (R$)',
+        'Diferenças por equiparação/desvio',
+      ],
+      [
+        'salaryDifferenceReflexosValue',
+        'Reflexos diferenças (R$)',
+        'Reflexos das diferenças salariais',
+      ],
+      ['outrasVerbasValue', 'Outras verbas (R$)', 'Total de outras verbas'],
+      [
+        'customVerbasReflexosValue',
+        'Reflexos outras verbas (R$)',
+        'Reflexos das outras verbas',
+      ],
+    ] as const
+  ).map(
+    ([key, label, description]): PlaceholderDef => ({
+      key,
+      label,
+      description,
+      group: 'verbas',
+      source: 'calculation',
+      example: '1.000,00',
+      resolve: calcMoney(key),
+    }),
+  ),
+  {
+    key: 'salaryDifferenceType',
+    label: 'Tipo de diferença salarial',
+    description: 'Equiparação ou desvio de função',
+    group: 'verbas',
+    source: 'calculation',
+    example: 'Equiparação salarial (CLT art. 461)',
+    resolve: (ctx) =>
+      ctx.calculation?.salaryDifferenceType === 'equiparacao'
+        ? 'Equiparação salarial (CLT art. 461)'
+        : ctx.calculation?.salaryDifferenceType === 'desvio_funcao'
+          ? 'Desvio de função'
+          : '',
+  },
+  {
+    key: 'paradigmName',
+    label: 'Nome do paradigma',
+    description: 'Paradigma da equiparação salarial',
+    group: 'verbas',
+    source: 'calculation',
+    example: 'Maria Souza',
+    resolve: (ctx) => String(ctx.calculation?.paradigmName ?? ''),
+  },
+  {
+    key: 'applyArt467',
+    label: 'Aplica Art. 467?',
+    description: 'Se a multa do art. 467 foi aplicada',
+    group: 'verbas',
+    source: 'calculation',
+    example: 'Sim',
+    resolve: (ctx) => (ctx.calculation?.applyArt467 ? 'Sim' : 'Não'),
+  },
+  // ── Liquidação ─────────────────────────────────────────────────────────────
+  ...(
+    [
+      ['totalValue', 'Total nominal (R$)', 'Total nominal das verbas'],
+      ['correctionTotal', 'Correção monetária (R$)', 'Total de correção'],
+      ['interestTotal', 'Juros de mora (R$)', 'Total de juros'],
+      ['inssEmployeeValue', 'INSS empregado (R$)', 'INSS do empregado'],
+      ['inssEmployerValue', 'INSS patronal (R$)', 'INSS do empregador'],
+      ['satRatValue', 'SAT/RAT (R$)', 'Valor SAT/RAT'],
+      ['irpfValue', 'IRPF (R$)', 'Imposto de renda'],
+      ['custasJudiciaisValue', 'Custas judiciais (R$)', 'Custas judiciais'],
+      [
+        'honorariosSucumbenciaValue',
+        'Honorários sucumbência (R$)',
+        'Honorários de sucumbência',
+      ],
+      ['honorariosIrpfValue', 'IRPF honorários (R$)', 'IRPF sobre honorários'],
+      [
+        'honorariosLiquidosValue',
+        'Honorários líquidos (R$)',
+        'Honorários líquidos',
+      ],
+      [
+        'brutoDevidoReclamante',
+        'Bruto devido (R$)',
+        'Bruto devido ao reclamante',
+      ],
+      ['totalDescontos', 'Total descontos (R$)', 'Total de descontos'],
+      [
+        'liquidoDevidoReclamante',
+        'Líquido devido (R$)',
+        'Líquido devido ao reclamante',
+      ],
+      [
+        'totalDevidoReclamado',
+        'Total devido pelo reclamado (R$)',
+        'Total a cargo do reclamado',
+      ],
+    ] as const
+  ).map(
+    ([key, label, description]): PlaceholderDef => ({
+      key,
+      label,
+      description,
+      group: 'liquidacao',
+      source: 'calculation',
+      example: '10.000,00',
+      resolve: calcMoney(key),
+    }),
+  ),
+  {
+    key: 'honorariosRate',
+    label: '% Honorários',
+    description: 'Percentual de honorários',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: '15,00',
+    resolve: calcMoney('honorariosRate'),
+  },
+  {
+    key: 'percentualRemuneratorio',
+    label: '% Remuneratório',
+    description: 'Percentual de parcelas remuneratórias',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: '45,00%',
+    resolve: (ctx) =>
+      ctx.calculation?.calculationVersion === 'v3'
+        ? `${dec(ctx.calculation, 'percentualRemuneratorio')
+            .toFixed(2)
+            .replace('.', ',')}%`
+        : '',
+  },
+  {
+    key: 'applyPrescricaoQuinquenal',
+    label: 'Aplica prescrição?',
+    description: 'Se a prescrição quinquenal foi aplicada',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: 'Sim',
+    resolve: (ctx) =>
+      ctx.calculation?.applyPrescricaoQuinquenal ? 'Sim' : 'Não',
+  },
+  {
+    key: 'prescricaoCutoff',
+    label: 'Corte da prescrição',
+    description: 'Data-limite da prescrição quinquenal',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: '09/2020',
+    resolve: (ctx) => fmtDate(ctx.calculation?.prescricaoCutoff as Date),
+  },
+  {
+    key: 'calculationVersion',
+    label: 'Versão do cálculo',
+    description: 'Versão do motor de cálculo',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: 'V3',
+    resolve: (ctx) =>
+      String(ctx.calculation?.calculationVersion ?? '').toUpperCase(),
+  },
+  {
+    key: 'status',
+    label: 'Status do cálculo',
+    description: 'Status do cálculo',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: 'em_andamento',
+    resolve: (ctx) => String(ctx.calculation?.status ?? ''),
+  },
+  {
+    key: 'isV3',
+    label: 'É V3?',
+    description: 'Se o cálculo é da versão 3',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: 'Sim',
+    resolve: (ctx) =>
+      ctx.calculation?.calculationVersion === 'v3' ? 'Sim' : 'Não',
+  },
+  {
+    key: 'isV2',
+    label: 'É V2?',
+    description: 'Se o cálculo é da versão 2',
+    group: 'liquidacao',
+    source: 'calculation',
+    example: 'Não',
+    resolve: (ctx) =>
+      ctx.calculation?.calculationVersion !== 'v3' ? 'Sim' : 'Não',
+  },
+  // ── Caso ─────────────────────────────────────────────────────────────────
+  {
+    key: 'caseTitle',
+    label: 'Título do caso',
+    description: 'Título do processo',
+    group: 'caso',
+    source: 'case',
+    example: 'Reclamação Trabalhista — João da Silva',
+    resolve: (ctx) => String(ctx.case?.title ?? ''),
+  },
+  {
+    key: 'processNumber',
+    label: 'Número do processo',
+    description: 'Número do processo (CNJ)',
+    group: 'caso',
+    source: 'case',
+    example: '0001198-34.2025.5.12.0003',
+    resolve: (ctx) => String(ctx.case?.processNumber ?? ''),
+  },
+  {
+    key: 'court',
+    label: 'Tribunal',
+    description: 'Tribunal / Justiça',
+    group: 'caso',
+    source: 'case',
+    example: 'TRT-12',
+    resolve: (ctx) => String(ctx.case?.court ?? ''),
+  },
+  {
+    key: 'vara',
+    label: 'Vara',
+    description: 'Vara do trabalho',
+    group: 'caso',
+    source: 'case',
+    example: '3ª Vara do Trabalho',
+    resolve: (ctx) => String(ctx.case?.vara ?? ''),
+  },
+  {
+    key: 'casePhase',
+    label: 'Fase do processo',
+    description: 'Fase atual do processo',
+    group: 'caso',
+    source: 'case',
+    example: 'Fase de conhecimento',
+    resolve: (ctx) =>
+      CASE_PHASE_LABELS[String(ctx.case?.phase ?? '')] ??
+      String(ctx.case?.phase ?? ''),
+  },
+  // ── Advogado ─────────────────────────────────────────────────────────────
+  {
+    key: 'lawyerName',
+    label: 'Nome do advogado',
+    description: 'Nome do advogado',
+    group: 'advogado',
+    source: 'lawyer',
+    example: 'Dr. Carlos Pereira',
+    resolve: (ctx) => String(ctx.lawyer?.name ?? ''),
+  },
+  {
+    key: 'lawyerOab',
+    label: 'OAB do advogado',
+    description: 'Número da OAB',
+    group: 'advogado',
+    source: 'lawyer',
+    example: 'OAB/SC 12345',
+    resolve: (ctx) => String(ctx.lawyer?.oabNumber ?? ''),
+  },
+  {
+    key: 'lawyerMail',
+    label: 'E-mail do advogado',
+    description: 'E-mail do advogado',
+    group: 'advogado',
+    source: 'lawyer',
+    example: 'carlos@escritorio.com',
+    resolve: (ctx) => String(ctx.lawyer?.mail ?? ''),
+  },
+  {
+    key: 'lawyerPhone',
+    label: 'Telefone do advogado',
+    description: 'Telefone do advogado',
+    group: 'advogado',
+    source: 'lawyer',
+    example: '(48) 99999-9999',
+    resolve: (ctx) => String(ctx.lawyer?.phone ?? ''),
+  },
+  {
+    key: 'lawyerOfficeName',
+    label: 'Nome do escritório',
+    description: 'Nome do escritório',
+    group: 'advogado',
+    source: 'lawyer',
+    example: 'Pereira Advocacia',
+    resolve: (ctx) => String(ctx.lawyer?.officeName ?? ''),
+  },
+  {
+    key: 'lawyerBrandColor',
+    label: 'Cor da marca',
+    description: 'Cor primária da marca do escritório',
+    group: 'advogado',
+    source: 'lawyer',
+    example: '#7e14ff',
+    resolve: (ctx) => String(ctx.lawyer?.brandPrimaryColor ?? '#7e14ff'),
+  },
+  // ── Sistema ─────────────────────────────────────────────────────────────
+  {
+    key: 'today',
+    label: 'Data de hoje',
+    description: 'Data atual (curta)',
+    group: 'sistema',
+    source: 'system',
+    example: '07/07/2026',
+    resolve: () => new Date().toLocaleDateString('pt-BR'),
+  },
+  {
+    key: 'todayLong',
+    label: 'Data de hoje (extenso)',
+    description: 'Data atual por extenso',
+    group: 'sistema',
+    source: 'system',
+    example: '07 de julho de 2026',
+    resolve: () =>
+      new Date().toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }),
+  },
+]

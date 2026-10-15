@@ -1,0 +1,1694 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Conexão direta (sem -pooler) para o CLI: migrate/db pull precisam de
+  // advisory lock session-scoped, que o pooler do Neon não sustenta.
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  document  String    @unique
+  mail      String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  isAdmin Boolean @default(false)
+
+  oabNumber String  @unique
+  bio       String?
+
+  remindD3 Boolean @default(true)
+  remindD1 Boolean @default(true)
+
+  // Nudges de onboarding. Nomes distintos de remindD1/remindD3, que são as
+  // preferências de aviso de prazo e audiência: o "D" ali é dias antes do
+  // compromisso, aqui é dias depois do cadastro.
+  onbNudgeD1SentAt DateTime?
+  onbNudgeD3SentAt DateTime?
+  onbNudgeOptOut   Boolean   @default(false)
+
+  laborCalculations LaborCalculation[]
+  batchAssessments  BatchAssessment[]
+  refreshTokens     RefreshToken[]
+  clients           Client[]
+  cases             Case[]
+  notes             Note[]
+  messages          Message[]
+  supportTickets    SupportTicket[]
+  supportMessages   SupportMessage[]
+  apiKeys           ApiKey[]
+  activities        Activity[]
+  documentTemplates DocumentTemplate[]
+  googleIntegration GoogleIntegration?
+  signatureRequests SignatureRequest[]
+  agendaEvents      AgendaEvent[]
+
+  memberships Membership[]
+  auditLogs   AuditLog[]
+
+  // Referral program. `referralCode` is the perpetual public code this user
+  // shares; `referralTier` is derived from how many referrals are qualified and
+  // is kept in sync with the Stripe coupon applied to their subscription.
+  referralCode  String?      @unique
+  referralTier  ReferralTier @default(none)
+  referralsMade Referral[]   @relation("referrerLink")
+  referredBy    Referral?    @relation("refereeLink")
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  logoUrl           String?
+  letterheadUrl     String?
+  brandPrimaryColor String? @default("#7e14ff")
+  address           String?
+  website           String?
+  phone             String?
+
+  stripeCustomerId String?
+  trialEndsAt      DateTime?
+
+  /// Contagem de membros ativos. Informativo: desde os planos por escritório a
+  /// cobrança é o plano, não a quantidade de assentos.
+  seats Int @default(1)
+
+  /// Plano escolhido, no vocabulário do Stripe (`product.metadata.code`).
+  /// Precisa existir antes de haver assinatura, senão a organização em trial
+  /// fica sem teto de pessoas. Com assinatura viva, quem manda é o preço dela.
+  planCode String @default("solo")
+
+  /// Chave pública do widget embutível. Fica no HTML do site do escritório, por
+  /// isso é opaca e rotacionável — não o id da organização. Nula = widget
+  /// desligado.
+  widgetKey String? @unique
+
+  subscription Subscription?
+  memberships  Membership[]
+  invites      Invite[]
+  auditLogs    AuditLog[]
+
+  cases                Case[]
+  clients              Client[]
+  supportTickets       SupportTicket[]
+  supportMessages      SupportMessage[]
+  supportAttachments   SupportAttachment[]
+  laborCalculations    LaborCalculation[]
+  batchAssessments     BatchAssessment[]
+  documentTemplates    DocumentTemplate[]
+  templateVersions     DocumentTemplateVersion[]
+  agendaEvents         AgendaEvent[]
+  settlements          Settlement[]
+  installments         SettlementInstallment[]
+  documentRequirements DocumentRequirement[]
+  deadlines            Deadline[]
+  hearings             Hearing[]
+  documents            Document[]
+  notes                Note[]
+  messages             Message[]
+  messageAttachments   MessageAttachment[]
+  apiKeys              ApiKey[]
+  apiUsages            ApiUsage[]
+  clientNotifications  ClientNotification[]
+  caseTasks            CaseTask[]
+  caseParties          CaseParty[]
+  caseMovements        CaseMovement[]
+  timelineEvents       TimelineEvent[]
+  activities           Activity[]
+  feeAgreements        FeeAgreement[]
+  clientAccessTokens   ClientAccessToken[]
+}
+
+enum OrgRole {
+  owner
+  admin
+  lawyer
+  staff
+  intern
+}
+
+model Membership {
+  id             String    @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgRole   @default(lawyer)
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, deletedAt])
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+model Invite {
+  id             String       @id @default(cuid())
+  organizationId String
+  email          String
+  role           OrgRole      @default(lawyer)
+  tokenHash      String       @unique
+  status         InviteStatus @default(pending)
+  invitedById    String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, status])
+}
+
+enum SignatureStatus {
+  pending
+  signed
+  failed
+}
+
+// A document signature request via gov.br (Assinatura Eletrônica). The user
+// authorizes each signature with their own gov.br account (per-session OAuth).
+model SignatureRequest {
+  id            String          @id @default(cuid())
+  userId        String
+  caseId        String?
+  documentName  String
+  sourceFileKey String
+  signedFileKey String?
+  provider      String          @default("govbr")
+  status        SignatureStatus @default(pending)
+  error         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  case Case? @relation(fields: [caseId], references: [id])
+
+  @@index([userId])
+  @@index([caseId])
+}
+
+// Google Calendar OAuth integration per user (2-way sync of hearings/deadlines).
+model GoogleIntegration {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  accessToken   String
+  refreshToken  String
+  expiresAt     DateTime
+  calendarId    String   @default("primary")
+  syncHearings  Boolean  @default(true)
+  syncDeadlines Boolean  @default(true)
+  email         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AgendaEventSource {
+  manual
+  google
+}
+
+// Personal calendar events owned by a user (not tied to a case). Powers
+// standalone agenda entries and events imported from Google Calendar.
+model AgendaEvent {
+  id            String            @id @default(cuid())
+  userId        String
+  title         String
+  description   String?
+  location      String?
+  startsAt      DateTime
+  endsAt        DateTime?
+  allDay        Boolean           @default(false)
+  doneAt        DateTime?
+  remindEmail   Boolean           @default(true)
+  source        AgendaEventSource @default(manual)
+  googleEventId String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, googleEventId])
+  @@index([userId])
+  @@index([startsAt])
+  @@index([organizationId])
+}
+
+model Client {
+  id                 String  @id @default(cuid())
+  name               String
+  document           String?
+  mail               String?
+  phone              String?
+  password           String?
+  mustChangePassword Boolean @default(true)
+  notes              String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  laborCalculations LaborCalculation[]
+  batchAssessments  BatchAssessment[]
+  cases             Case[]
+  notifications     ClientNotification[]
+  caseNotes         Note[]
+  messages          Message[]
+  accessTokens      ClientAccessToken[]
+
+  lastLoginAt          DateTime?
+  loginAttempts        Int       @default(0)
+  lockedUntil          DateTime?
+  notificationsEnabled Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([userId, document])
+  @@index([mail])
+  @@index([organizationId])
+}
+
+model LaborCalculation {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  caseId String?
+  case   Case?   @relation(fields: [caseId], references: [id])
+
+  clientName         String
+  clientDocument     String?
+  observations       String?
+  calculationVersion String
+  terminationType    TerminationType
+  status             CalculationStatus @default(em_andamento)
+  shareCode          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Core Input
+  startDate DateTime
+  endDate   DateTime
+
+  lastSalary Decimal @db.Decimal(10, 2)
+  baseSalary Decimal @db.Decimal(10, 2)
+
+  unpaid13ths           Int
+  vacationCount         Int
+  vacationVencidasCount Int @default(0)
+
+  priorNoticeWorked Boolean
+  priorNoticeDate   DateTime?
+
+  extraHours Decimal @db.Decimal(10, 2)
+  nightHours Decimal @db.Decimal(10, 2)
+
+  insalubrityLevel     Int
+  dangerousWork        Boolean
+  applyArt477Fine      Boolean @default(false)
+  lastThreeSalariesAvg Decimal @db.Decimal(10, 2)
+
+  // Input V3
+  nightAdditionalPercent Int       @default(20)
+  satRate                Decimal   @default(0.03) @db.Decimal(10, 2)
+  employerInssRate       Decimal   @default(0.20) @db.Decimal(10, 2)
+  honorariosRate         Decimal   @default(0.15) @db.Decimal(10, 2)
+  irpfDependents         Int       @default(0)
+  filingDate             DateTime?
+  liquidationDate        DateTime?
+
+  // Core Result
+  priorNoticeValue           Decimal @db.Decimal(10, 2)
+  thirteenthSalaryValue      Decimal @db.Decimal(10, 2)
+  vacationValue              Decimal @db.Decimal(10, 2)
+  fgtsValue                  Decimal @db.Decimal(10, 2)
+  fgtsFineValue              Decimal @db.Decimal(10, 2)
+  unemploymentInsuranceValue Decimal @db.Decimal(10, 2)
+  extraHoursValue            Decimal @db.Decimal(10, 2)
+  nightAdditionalValue       Decimal @db.Decimal(10, 2)
+  insalubrityValue           Decimal @db.Decimal(10, 2)
+  dangerousWorkValue         Decimal @db.Decimal(10, 2)
+  art477FineValue            Decimal @default(0) @db.Decimal(10, 2)
+  totalValue                 Decimal @db.Decimal(10, 2)
+  reflexo13thValue           Decimal @default(0) @db.Decimal(10, 2)
+  reflexoVacationValue       Decimal @default(0) @db.Decimal(10, 2)
+  reflexoFGTSValue           Decimal @default(0) @db.Decimal(10, 2)
+  reflexoMultaFGTSValue      Decimal @default(0) @db.Decimal(10, 2)
+  doubleVacationValue        Decimal @default(0) @db.Decimal(10, 2)
+
+  // Result V3 
+  saldoSalarioValue          Decimal @default(0) @db.Decimal(10, 2)
+  correctionTotal            Decimal @default(0) @db.Decimal(10, 2)
+  interestTotal              Decimal @default(0) @db.Decimal(10, 2)
+  inssEmployeeValue          Decimal @default(0) @db.Decimal(10, 2)
+  inssEmployerValue          Decimal @default(0) @db.Decimal(10, 2)
+  satRatValue                Decimal @default(0) @db.Decimal(10, 2)
+  irpfValue                  Decimal @default(0) @db.Decimal(10, 2)
+  custasJudiciaisValue       Decimal @default(0) @db.Decimal(10, 2)
+  honorariosSucumbenciaValue Decimal @default(0) @db.Decimal(10, 2)
+  honorariosIrpfValue        Decimal @default(0) @db.Decimal(10, 2)
+  honorariosLiquidosValue    Decimal @default(0) @db.Decimal(10, 2)
+  brutoDevidoReclamante      Decimal @default(0) @db.Decimal(10, 2)
+  totalDescontos             Decimal @default(0) @db.Decimal(10, 2)
+  liquidoDevidoReclamante    Decimal @default(0) @db.Decimal(10, 2)
+  totalDevidoReclamado       Decimal @default(0) @db.Decimal(10, 2)
+  percentualRemuneratorio    Decimal @default(0) @db.Decimal(10, 2)
+
+  // New verbas: art. 467, prescrição quinquenal, diferenças salariais, outras verbas
+  applyArt467                   Boolean               @default(false)
+  applyPrescricaoQuinquenal     Boolean               @default(false)
+  prescricaoCutoff              DateTime?
+  salaryDifferenceType          SalaryDifferenceType?
+  paradigmName                  String?
+  salaryDifferenceApplyReflexos Boolean               @default(true)
+  art467Value                   Decimal               @default(0) @db.Decimal(10, 2)
+  salaryDifferenceValue         Decimal               @default(0) @db.Decimal(10, 2)
+  salaryDifferenceReflexosValue Decimal               @default(0) @db.Decimal(10, 2)
+  outrasVerbasValue             Decimal               @default(0) @db.Decimal(10, 2)
+  customVerbasReflexosValue     Decimal               @default(0) @db.Decimal(10, 2)
+  intervalIntrajornadaHours     Int                   @default(0)
+  transferAdditionalMonths      Int                   @default(0)
+  intervalIntrajornadaValue     Decimal               @default(0) @db.Decimal(10, 2)
+  transferAdditionalValue       Decimal               @default(0) @db.Decimal(10, 2)
+  applyDsrOnExtra               Boolean               @default(false)
+  stabilityMonths               Int                   @default(0)
+  fgtsAlreadyDeposited          Decimal               @default(0) @db.Decimal(10, 2)
+  amountsAlreadyPaid            Decimal               @default(0) @db.Decimal(10, 2)
+  dsrValue                      Decimal               @default(0) @db.Decimal(10, 2)
+  stabilityValue                Decimal               @default(0) @db.Decimal(10, 2)
+  deductionsValue               Decimal               @default(0) @db.Decimal(10, 2)
+
+  // Provenance. Null on calculations created before this was tracked — the UI
+  // must say "procedência não registrada" rather than imply a snapshot exists.
+  indexSnapshotId  String?
+  indexSnapshot    IndexTableSnapshot? @relation(fields: [indexSnapshotId], references: [id])
+  // Version of the calculation engine that produced the stored results.
+  engineVersion    String?
+  // Last time the user explicitly re-ran the calculation against fresh indices.
+  indexesUpdatedAt DateTime?
+
+  fgtsEntries             FgtsMonthlyEntry[]
+  verbaLines              CalculationVerbaLine[]
+  salaryHistory           SalaryHistory[]
+  unpaidSalaries          UnpaidSalary[]
+  salaryDifferencePeriods SalaryDifferencePeriod[]
+  salaryDifferenceEntries SalaryDifferenceEntry[]
+  customVerbas            CustomVerba[]
+
+  settlements Settlement[]
+
+  @@index([userId])
+  @@index([shareCode])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([caseId])
+  @@index([organizationId])
+  @@index([indexSnapshotId])
+}
+
+model FgtsMonthlyEntry {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  month            DateTime
+  base             Float
+  aliquot          Float
+  deposit          Float
+  corrected        Float
+  correctionAmount Float
+  interest         Float
+  total            Float
+
+  createdAt DateTime @default(now())
+
+  @@unique([laborCalculationId, month])
+  @@index([laborCalculationId])
+}
+
+// Memória de cálculo: uma linha por verba, como sai do motor. Sem isso o
+// demonstrativo teria de ser recalculado a cada emissão de laudo, e recalcular
+// é justamente o que se quer evitar depois que o cálculo foi fechado.
+// `legalRef` nasce nulo — preenchido quando as verbas ganharem fundamento
+// (adicionais ainda entram embutidos em agregados).
+model CalculationVerbaLine {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  // Posição na memória de cálculo, na ordem em que o motor emite.
+  order    Int
+  name     String
+  legalRef String?
+
+  bruto     Decimal @db.Decimal(12, 2)
+  corrigido Decimal @db.Decimal(12, 2)
+  juros     Decimal @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@unique([laborCalculationId, order])
+  @@index([laborCalculationId])
+}
+
+model SalaryHistory {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  month      DateTime
+  baseSalary Float
+  lastSalary Float
+
+  createdAt DateTime @default(now())
+
+  @@unique([laborCalculationId, month])
+  @@index([laborCalculationId])
+}
+
+model UnpaidSalary {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  month      DateTime
+  daysWorked Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([laborCalculationId, month])
+  @@index([laborCalculationId])
+}
+
+// Input: lawyer-defined salary difference periods (equiparação / desvio de função)
+model SalaryDifferencePeriod {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  startMonth     DateTime
+  endMonth       DateTime
+  dueSalary      Float
+  receivedSalary Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([laborCalculationId])
+}
+
+// Computed: month-by-month salary difference breakdown (court spreadsheet)
+model SalaryDifferenceEntry {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  month            DateTime
+  due              Float
+  received         Float
+  diff             Float
+  corrected        Float
+  correctionAmount Float
+  interest         Float
+  total            Float
+
+  createdAt DateTime @default(now())
+
+  @@unique([laborCalculationId, month])
+  @@index([laborCalculationId])
+}
+
+// Input + computed aggregates: lawyer-defined custom verbas
+model CustomVerba {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation? @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  name         String
+  monthlyValue Float
+  startMonth   DateTime
+  endMonth     DateTime
+  nature       CustomVerbaNature @default(indenizatoria)
+
+  brutoValue     Float @default(0)
+  correctedValue Float @default(0)
+  interestValue  Float @default(0)
+  totalValue     Float @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([laborCalculationId])
+}
+
+enum SalaryDifferenceType {
+  equiparacao
+  desvio_funcao
+}
+
+enum CustomVerbaNature {
+  indenizatoria
+  salarial
+}
+
+enum TerminationType {
+  sem_justa_causa
+  com_justa_causa
+  pedido_demissao
+  rescisao_indireta
+}
+
+enum CalculationStatus {
+  em_andamento
+  proposta_enviada
+  acordo_fechado
+  ajuizado
+}
+
+enum SettlementFeeType {
+  percentage
+  fixed
+}
+
+enum SettlementStatus {
+  negotiating
+  accepted
+  rejected
+}
+
+model Settlement {
+  id String @id @default(cuid())
+
+  laborCalculationId String
+  laborCalculation   LaborCalculation @relation(fields: [laborCalculationId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  agreementRate Decimal           @db.Decimal(10, 2)
+  feeType       SettlementFeeType @default(percentage)
+  feeValue      Decimal           @db.Decimal(10, 2)
+
+  agreementValue Decimal @db.Decimal(10, 2)
+  feeAmount      Decimal @db.Decimal(10, 2)
+  netToClient    Decimal @db.Decimal(10, 2)
+  estimatedTime  String
+
+  status    SettlementStatus @default(negotiating)
+  settledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  installments SettlementInstallment[]
+
+  @@index([laborCalculationId])
+  @@index([laborCalculationId, status])
+  @@index([organizationId])
+}
+
+// Installment schedule of an accepted settlement (parcelas do acordo).
+model SettlementInstallment {
+  id           String    @id @default(cuid())
+  settlementId String
+  number       Int
+  dueDate      DateTime
+  amount       Decimal   @db.Decimal(12, 2)
+  paidAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([settlementId])
+  @@index([dueDate])
+  @@index([organizationId])
+}
+
+model MonetaryIndex {
+  id String @id @default(cuid())
+
+  month           DateTime @unique
+  // 8 decimals: monthly TR (0.1709) and cumulative factors (1.00420000) need
+  // more than 2 places or correction/interest drift.
+  ipcaE           Decimal  @db.Decimal(18, 8)
+  ipcaECumulative Decimal  @db.Decimal(18, 8)
+  selic           Decimal  @db.Decimal(18, 8)
+  selicCumulative Decimal  @db.Decimal(18, 8)
+  trd             Decimal  @db.Decimal(18, 8)
+
+  // Origin of the row: 'bcb' (auto-synced) or 'manual' (admin override).
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Frozen copy of the correction index table used by a calculation. MonetaryIndex
+// is global and mutable — without a snapshot, editing a saved calculation would
+// silently reapply whatever indices exist today and move the total. Rows are
+// deduplicated by `hash`, so thousands of calculations sharing the same table
+// point at a single row.
+model IndexTableSnapshot {
+  id String @id @default(cuid())
+
+  // sha256 of the canonical serialization of `entries` (see index-snapshot.ts).
+  hash String @unique
+
+  // IndexEntry[] exactly as consumed by createIndexTable().
+  entries Json
+
+  // Denormalized for display and diagnostics; derived from `entries`.
+  entryCount Int
+  minMonth   String
+  maxMonth   String
+
+  createdAt DateTime @default(now())
+
+  calculations LaborCalculation[]
+
+  @@index([createdAt])
+}
+
+// Trilha de auditoria. Responde "por que esse número" quando a parte contrária
+// impugna ou um cliente corporativo audita: quem mexeu, quando, o que mudou.
+// Escrita best-effort — falha aqui não pode derrubar a operação principal.
+model AuditLog {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Nulo em contexto de sistema (cron, webhook).
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  entityType String // "LaborCalculation"
+  entityId   String
+  action     String // create | update | reindex | delete | status_change
+
+  // { campo: { from, to } }, só os campos que mudaram.
+  changes Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, entityType, entityId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model RefreshToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String   @unique
+  family    String
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([family])
+  @@index([tokenHash])
+}
+
+enum CasePhase {
+  pre_judicial
+  distribuido
+  conhecimento
+  recurso
+  execucao
+  encerrado
+}
+
+model Case {
+  id                 String      @id @default(cuid())
+  assignedToId       String
+  organizationId     String
+  clientId           String?
+  title              String
+  processNumber      String?
+  court              String?
+  vara               String?
+  phase              CasePhase   @default(pre_judicial)
+  actionType         ActionType?
+  valorCausa         Decimal?    @db.Decimal(12, 2)
+  riskLevel          RiskLevel?
+  observations       String?
+  openedAt           DateTime    @default(now())
+  closedAt           DateTime?
+  /// Última consulta ao DataJud. Dá ao cron a ordem de rodízio — a API pública
+  /// do CNJ tem limite, então cada rodada atende um pedaço da fila.
+  lastMovementSyncAt DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  deletedAt          DateTime?
+
+  assignedTo           User                  @relation(fields: [assignedToId], references: [id])
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  client               Client?               @relation(fields: [clientId], references: [id])
+  calculations         LaborCalculation[]
+  hearings             Hearing[]
+  deadlines            Deadline[]
+  documents            Document[]
+  notes                Note[]
+  messages             Message[]
+  activities           Activity[]
+  documentRequirements DocumentRequirement[]
+  timelineEvents       TimelineEvent[]
+  parties              CaseParty[]
+  tasks                CaseTask[]
+  movements            CaseMovement[]
+  feeAgreement         FeeAgreement?
+  signatureRequests    SignatureRequest[]
+
+  @@index([assignedToId])
+  @@index([assignedToId, phase])
+  @@index([assignedToId, createdAt])
+  @@index([processNumber])
+  @@index([organizationId])
+  @@index([lastMovementSyncAt])
+}
+
+enum ActionType {
+  verbas_rescisorias
+  horas_extras
+  equiparacao_salarial
+  desvio_funcao
+  danos_morais
+  rescisao_indireta
+  adicional_insalubridade
+  adicional_periculosidade
+  fgts_multa
+  reconhecimento_vinculo
+  outro
+}
+
+enum RiskLevel {
+  baixo
+  medio
+  alto
+}
+
+enum PartyRole {
+  reclamante
+  reclamada
+  testemunha
+  paradigma
+  perito
+  advogado_contrario
+  outro
+}
+
+// Parties and people involved in a case (beyond the client/reclamante).
+model CaseParty {
+  id        String    @id @default(cuid())
+  caseId    String
+  role      PartyRole
+  name      String
+  document  String?
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([organizationId])
+}
+
+enum TaskStatus {
+  pendente
+  em_andamento
+  concluida
+}
+
+enum TaskPriority {
+  baixa
+  media
+  alta
+}
+
+// To-dos within a case (assignable, with due date and status).
+model CaseTask {
+  id          String       @id @default(cuid())
+  caseId      String
+  title       String
+  description String?
+  dueAt       DateTime?
+  status      TaskStatus   @default(pendente)
+  priority    TaskPriority @default(media)
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([caseId, status])
+  @@index([organizationId])
+}
+
+enum MovementSource {
+  manual
+  datajud
+}
+
+// Process movements (andamentos). May be entered manually or pulled from the
+// CNJ DataJud public API by process number.
+model CaseMovement {
+  id          String         @id @default(cuid())
+  caseId      String
+  date        DateTime
+  code        String?
+  description String
+  source      MovementSource @default(manual)
+  externalId  String?
+  createdAt   DateTime       @default(now())
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([caseId, externalId])
+  @@index([caseId])
+  @@index([caseId, date])
+  @@index([organizationId])
+}
+
+enum FeeType {
+  percentual
+  fixo
+  exito
+}
+
+// Fee agreement (honorários contratuais) for a case.
+model FeeAgreement {
+  id         String   @id @default(cuid())
+  caseId     String   @unique
+  feeType    FeeType  @default(percentual)
+  percent    Decimal? @db.Decimal(5, 2)
+  fixedValue Decimal? @db.Decimal(12, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+enum HearingKind {
+  inicial
+  conciliacao
+  instrucao
+  julgamento
+  outra
+}
+
+enum DeadlineKind {
+  contestacao
+  recurso_ordinario
+  embargos
+  outros
+}
+
+model Hearing {
+  id            String      @id @default(cuid())
+  caseId        String
+  scheduledAt   DateTime
+  kind          HearingKind
+  location      String?
+  link          String?
+  notes         String?
+  googleEventId String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  case      Case       @relation(fields: [caseId], references: [id])
+  deadlines Deadline[]
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([scheduledAt])
+  @@index([organizationId])
+}
+
+enum DocumentKind {
+  ctps
+  holerite
+  contrato
+  comprovante
+  outros
+}
+
+model Document {
+  id        String       @id @default(cuid())
+  caseId    String
+  userId    String
+  kind      DocumentKind
+  fileKey   String
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime     @default(now())
+  deletedAt DateTime?
+
+  case              Case                 @relation(fields: [caseId], references: [id])
+  requirement       DocumentRequirement?
+  messageAttachment MessageAttachment?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([deletedAt])
+  @@index([organizationId])
+}
+
+model Deadline {
+  id                          String       @id @default(cuid())
+  caseId                      String
+  dueAt                       DateTime
+  kind                        DeadlineKind
+  customLabel                 String?
+  doneAt                      DateTime?
+  autoCalculatedFromHearingId String?
+  googleEventId               String?
+  createdAt                   DateTime     @default(now())
+  updatedAt                   DateTime     @updatedAt
+
+  case    Case     @relation(fields: [caseId], references: [id])
+  hearing Hearing? @relation(fields: [autoCalculatedFromHearingId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([dueAt])
+  @@index([organizationId])
+}
+
+enum ActivityKind {
+  case_created
+  case_phase_changed
+  calc_linked
+  calc_unlinked
+  settlement_updated
+  doc_uploaded
+  doc_deleted
+  hearing_created
+  deadline_created
+  deadline_done
+  note_created
+  note_updated
+  note_deleted
+}
+
+model Note {
+  id        String    @id @default(cuid())
+  caseId    String
+  userId    String
+  clientId  String?
+  body      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  case   Case    @relation(fields: [caseId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+  client Client? @relation(fields: [clientId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([caseId, createdAt])
+  @@index([clientId])
+  @@index([organizationId])
+}
+
+enum MessageAuthorKind {
+  lawyer
+  client
+}
+
+/// Conversa do caso entre o escritório e o cliente do portal. `Note` continua
+/// existindo e é **interna**: nunca sai para o portal. Foi por não haver essa
+/// separação que as notas do advogado chegaram a ser servidas ao cliente.
+model Message {
+  id             String            @id @default(cuid())
+  caseId         String
+  authorKind     MessageAuthorKind
+  userId         String?
+  clientId       String?
+  body           String
+  createdAt      DateTime          @default(now())
+  deletedAt      DateTime?
+  readByClientAt DateTime?
+  readByLawyerAt DateTime?
+
+  case        Case                @relation(fields: [caseId], references: [id])
+  user        User?               @relation(fields: [userId], references: [id])
+  client      Client?             @relation(fields: [clientId], references: [id])
+  attachments MessageAttachment[]
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId, createdAt])
+  @@index([caseId, readByLawyerAt])
+  @@index([caseId, readByClientAt])
+  @@index([organizationId])
+}
+
+/// Anexo de mensagem. Aponta para o `Document` que já existe em vez de guardar
+/// arquivo próprio: upload assinado, download e expurgo já são resolvidos lá, e
+/// um segundo caminho de arquivo duplicaria permissão e storage.
+model MessageAttachment {
+  id         String @id @default(cuid())
+  messageId  String
+  documentId String @unique
+
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([messageId])
+  @@index([organizationId])
+}
+
+model Activity {
+  id        String       @id @default(cuid())
+  caseId    String
+  userId    String
+  kind      ActivityKind
+  payload   Json         @default("{}")
+  createdAt DateTime     @default(now())
+
+  case Case @relation(fields: [caseId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId])
+  @@index([caseId, createdAt])
+  @@index([organizationId])
+}
+
+enum DocumentStatus {
+  pendente
+  enviado
+  aprovado
+  rejeitado
+}
+
+model DocumentRequirement {
+  id              String         @id @default(cuid())
+  caseId          String
+  kind            DocumentKind
+  customName      String?
+  description     String
+  isMandatory     Boolean        @default(true)
+  status          DocumentStatus @default(pendente)
+  documentId      String?        @unique
+  rejectionReason String?
+  dueDate         DateTime?
+  order           Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  case     Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId, status])
+  @@index([caseId, order])
+  @@index([organizationId])
+}
+
+enum DocumentTemplateType {
+  parecer_tecnico
+  peticao_inicial
+  proposta_acordo
+  notificacao_extrajudicial
+  danos_morais
+  aviso_previo_indenizado
+  horas_extras_adicionais
+  fgts_e_multa
+  recurso_ordinario
+  contestacao
+  rescisao_indireta
+  termo_quitacao
+  customizado
+}
+
+model DocumentTemplate {
+  id             String               @id @default(cuid())
+  userId         String?
+  name           String
+  description    String?
+  isSystem       Boolean              @default(false)
+  type           DocumentTemplateType @default(customizado)
+  fileKey        String?
+  currentVersion Int                  @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime?            @updatedAt
+
+  user     User?                     @relation(fields: [userId], references: [id])
+  versions DocumentTemplateVersion[]
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([userId])
+  @@index([isSystem])
+  @@index([type])
+  @@index([organizationId])
+}
+
+// Snapshot of a template's .docx file before it was replaced. The active file
+// lives on DocumentTemplate.fileKey; older ones are archived here.
+model DocumentTemplateVersion {
+  id           String   @id @default(cuid())
+  templateId   String
+  version      Int
+  fileKey      String
+  placeholders Json     @default("[]")
+  createdAt    DateTime @default(now())
+
+  template DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@index([organizationId])
+}
+
+enum TimelineEventType {
+  processo_iniciado
+  status_atualizado
+  audiencia_marcada
+  documento_enviado
+  documento_aprovado
+  documento_rejeitado
+  proposta_acordo
+  calculo_atualizado
+  sentenca_publicada
+  custom
+}
+
+model TimelineEvent {
+  id          String            @id @default(cuid())
+  caseId      String
+  type        TimelineEventType
+  title       String
+  description String?
+  date        DateTime
+  responsible String?
+  nextSteps   String?
+  attachments String[]
+  isVisible   Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([caseId, date])
+  @@index([caseId, isVisible])
+  @@index([organizationId])
+}
+
+enum NotificationType {
+  timeline_event
+  document_rejected
+  settlement_received
+  hearing_scheduled
+  document_due_soon
+  message_received
+}
+
+model ClientNotification {
+  id        String           @id @default(cuid())
+  clientId  String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([clientId, isRead])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+enum ClientTokenPurpose {
+  invite
+  reset
+}
+
+// One-time link the client uses to set a portal password — on first access
+// (invite) or after forgetting it (reset). Replaces two bad practices: the
+// initial password derived from the CPF, and the reset token that used to be
+// serialized into `Client.notes`, overwriting the lawyer's own annotations.
+model ClientAccessToken {
+  id        String             @id @default(cuid())
+  clientId  String
+  tokenHash String             @unique
+  purpose   ClientTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([clientId, purpose])
+  @@index([expiresAt])
+  @@index([organizationId])
+}
+
+// Local mirror of the user's Stripe subscription, written only by the Stripe
+// webhook. Reading billing state from the database instead of the Stripe API
+// keeps route guards fast and keeps the app usable when Stripe is unreachable.
+model Subscription {
+  id                   String    @id @default(cuid())
+  organizationId       String    @unique
+  stripeSubscriptionId String    @unique
+  stripeCustomerId     String
+  status               String
+  priceId              String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  trialEnd             DateTime?
+  firstPaidAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+}
+
+/// Credencial de integração da organização. O segredo nunca é gravado: fica o
+/// sha256, como em `invite-token.ts`.
+/// `test` calcula igual a `live` e **não** gera cobrança: existe para o
+/// integrador escrever a integração sem queimar chamada paga.
+enum ApiKeyMode {
+  live
+  test
+}
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  mode           ApiKeyMode @default(live)
+  /// Parte visível do token ("jp_live_" + 16 hex), única e indexada: é por ela
+  /// que a chave é encontrada antes de o segredo ser verificado.
+  prefix         String    @unique
+  secretHash     String
+  /// Quem emitiu. Vira o `userId` do cálculo criado pela chave, porque
+  /// `LaborCalculation.userId` é obrigatório e a chamada não tem pessoa.
+  createdById    String
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  usages       ApiUsage[]
+
+  @@index([organizationId])
+}
+
+/// Uma linha por chamada cobrável. `reportedAt` nulo = ainda não reportada ao
+/// medidor do Stripe.
+model ApiUsage {
+  id             String    @id @default(cuid())
+  organizationId String
+  apiKeyId       String
+  endpoint       String
+  calculationId  String?
+  createdAt      DateTime  @default(now())
+  reportedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  apiKey       ApiKey       @relation(fields: [apiKeyId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([reportedAt])
+}
+
+enum ReferralTier {
+  none
+  bronze
+  prata
+  ouro
+  diamante
+}
+
+enum ReferralStatus {
+  pending
+  signed_up
+  qualified
+  lost
+}
+
+// One row per invitation. It is the state machine of the referral program:
+// created on invite or signup, promoted to `qualified` when the referee pays a
+// real invoice, demoted to `lost` when they cancel or get refunded.
+model Referral {
+  id         String  @id @default(cuid())
+  referrerId String
+  refereeId  String? @unique
+
+  inviteEmail String?
+  status      ReferralStatus @default(pending)
+
+  signedUpAt  DateTime?
+  qualifiedAt DateTime?
+  lostAt      DateTime?
+
+  // Amount of the referee's first paid invoice, in cents. Frozen at
+  // qualification time — it is the base of the cashback credited at D+30.
+  firstPaidAmountCents Int?
+  cashbackPaidAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referrer User  @relation("referrerLink", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("refereeLink", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId, status])
+  @@index([status, cashbackPaidAt])
+}
+
+// Cálculo feito por alguém sem conta, na calculadora pública. Não é tenant: não
+// pertence a organização nenhuma enquanto um advogado não o reivindicar. Os
+// campos de reivindicação já entram aqui, nulos — adicionar coluna nula depois é
+// barato, migrar tabela com dados em produção não é.
+model PublicCalculation {
+  id        String  @id @default(cuid())
+  tokenHash String  @unique
+  name      String?
+  email     String?
+  phone     String?
+
+  input           Json
+  result          Json
+  engineVersion   String
+  indexSnapshotId String?
+
+  source       String
+  referrerHost String?
+
+  /// Organização dona do widget que originou o cálculo. Dentro do iframe o
+  /// Referer é o nosso próprio host, então `referrerHost` não serve para
+  /// atribuir — quem atribui é a chave do widget, validada no servidor.
+  widgetOrganizationId String?
+
+  /// "trabalhador" (quanto tenho a receber) ou "empresa" (quanto custa demitir).
+  /// O motor é o mesmo; muda a leitura do resultado.
+  perspective String @default("trabalhador")
+
+  /// Qual calculadora gerou este registro: "rescisao" (wizard de sete passos),
+  /// "horas_extras" ou "ferias_13". Determina qual motor produziu `result` e
+  /// qual tela o front monta. O default preserva as linhas já existentes.
+  kind String @default("rescisao")
+
+  invitedEmail String?
+  invitedAt    DateTime?
+
+  claimedByOrganizationId String?
+  claimedAt               DateTime?
+  clientId                String?
+  laborCalculationId      String?
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([email])
+  @@index([claimedByOrganizationId])
+  @@index([expiresAt])
+  @@index([perspective])
+  @@index([kind, createdAt])
+  @@index([widgetOrganizationId, createdAt])
+}
+
+// Avaliação de passivo trabalhista de uma folha inteira. O motor é o mesmo
+// `calculateLaborV3`; o que este modelo acrescenta é a agregação por empresa e a
+// leitura de empregador (custo de desligar × exposição em reclamação).
+model BatchAssessment {
+  id     String @id @default(cuid())
+  name   String
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // A empresa avaliada, quando ela já é cliente do escritório.
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  // Uma tabela de índices para o lote inteiro: comparar exposições calculadas
+  // com tabelas diferentes não significaria nada.
+  indexSnapshotId String?
+  engineVersion   String
+
+  rowCount    Int @default(0)
+  failedCount Int @default(0)
+
+  severanceCost Decimal @default(0) @db.Decimal(14, 2)
+  exposure      Decimal @default(0) @db.Decimal(14, 2)
+  gap           Decimal @default(0) @db.Decimal(14, 2)
+
+  rows BatchAssessmentRow[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([organizationId, createdAt])
+  @@index([clientId])
+}
+
+model BatchAssessmentRow {
+  id      String          @id @default(cuid())
+  batchId String
+  batch   BatchAssessment @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  order     Int
+  /// Como a empresa identifica a pessoa: matrícula, nome, o que vier no arquivo.
+  reference String
+  input     Json
+
+  severanceCost Decimal? @db.Decimal(14, 2)
+  exposure      Decimal? @db.Decimal(14, 2)
+  gap           Decimal? @db.Decimal(14, 2)
+
+  /// Preenchido quando a linha não pôde ser calculada. Linha ruim não derruba o lote.
+  error String?
+
+  @@index([batchId, order])
+}
+
+/// Canal de atendimento entre o escritório e o LexLaboral.
+///
+/// É um só modelo para dúvida, problema e sugestão porque os três têm a mesma
+/// forma — alguém escreve, alguém responde, o assunto anda até acabar. O que
+/// muda é o vocabulário do status na tela, e isso é rótulo, não estrutura.
+///
+/// Pertence à **organização**, não à pessoa: quem abriu pode sair do escritório
+/// no meio da conversa, e o chamado continua sendo do escritório.
+model SupportTicket {
+  id      String        @id @default(cuid())
+  kind    SupportKind
+  status  SupportStatus @default(aberto)
+  subject String
+  /// Rota, plano e versão de onde o chamado saiu. Evita a primeira rodada de
+  /// perguntas ("em que tela foi?", "qual o seu plano?") em todo atendimento.
+  context Json?
+
+  /// Quem abriu. Fica nulo se a pessoa for removida — o chamado sobrevive.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  messages SupportMessage[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  /// Ordena a fila do atendimento sem varrer as mensagens de cada chamado.
+  lastMessageAt DateTime  @default(now())
+  closedAt      DateTime?
+
+  @@index([organizationId, lastMessageAt])
+  @@index([status, lastMessageAt])
+  @@index([userId])
+}
+
+/// Uma fala dentro do chamado. `fromStaff` distingue quem escreveu: o LexLaboral
+/// responde sem usuário associado, então autor nulo não significa "anônimo".
+model SupportMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  body      String
+  fromStaff Boolean       @default(false)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  /// Marcações de leitura dos dois lados, para o contador de não lidas.
+  readByUserAt  DateTime?
+  readByStaffAt DateTime?
+
+  attachments SupportAttachment[]
+
+  @@index([ticketId, createdAt])
+  @@index([organizationId])
+}
+
+/// Arquivo anexado a uma fala do chamado — print da tela, vídeo do erro, PDF.
+///
+/// Não reaproveita `Document`: documento pertence a um caso e aparece na pasta
+/// do cliente, e print de suporte não é peça do processo. Guarda só a chave do
+/// R2; a URL de leitura é assinada na hora, nunca persistida.
+model SupportAttachment {
+  id        String         @id @default(cuid())
+  messageId String
+  message   SupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  fileKey   String
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+
+  /// Resultado da varredura antivírus: `pending` enquanto não houve varredura,
+  /// `clean` liberado, `infected` bloqueado no download. Sem clamd configurado
+  /// fica `skipped` — declarar que não houve varredura é melhor que fingir que
+  /// houve.
+  scanStatus SupportScanStatus @default(pending)
+  scanDetail String?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@index([organizationId])
+}
+
+enum SupportScanStatus {
+  pending
+  clean
+  infected
+  skipped
+}
+
+enum SupportKind {
+  duvida
+  problema
+  sugestao
+}
+
+/// Um enum para os dois fluxos. O chamado usa aberto → em_analise →
+/// aguardando_usuario → concluido; a sugestão usa aberto → em_analise →
+/// planejado → em_desenvolvimento → concluido. `recusado` fecha os dois.
+/// A tela traduz: `concluido` é "resolvido" no chamado e "entregue" na sugestão.
+enum SupportStatus {
+  aberto
+  em_analise
+  aguardando_usuario
+  planejado
+  em_desenvolvimento
+  concluido
+  recusado
+}
