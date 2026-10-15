@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { datajudAliasFor, parseCnjNumber } from './datajud-service'
 
 // Número CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO — J = segmento, TR = tribunal.
-const trt2 = '1001538-51.2018.5.02.0401'
-const tst = '1000123-45.2024.5.00.0000'
-const civel = '1000123-45.2024.8.26.0100'
+const trt2 = '2000456-41.2023.5.02.0999'
+const tst = '1000123-19.2024.5.00.0000'
+const civel = '1000123-35.2024.8.26.0100'
 
 describe('parseCnjNumber', () => {
   it('lê segmento e tribunal do número formatado', () => {
     expect(parseCnjNumber(trt2)).toEqual({
-      digits: '10015385120185020401',
+      digits: '20004564120235020999',
       segment: '5',
       tribunal: '02',
     })

@@ -62,6 +62,10 @@ export async function fetchDataJudMovements(
   const parsed = parseCnjNumber(processNumber)
   if (!parsed) return []
 
+  if (!env.DATAJUD_API_KEY) {
+    throw new Error('DATAJUD_API_KEY não configurada')
+  }
+
   const url = `${env.DATAJUD_BASE_URL}/${alias}/_search`
   const res = await fetch(url, {
     method: 'POST',

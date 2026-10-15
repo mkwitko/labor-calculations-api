@@ -291,7 +291,7 @@ describe('labor-calculation-v3 (with unpaid salaries)', () => {
   })
 })
 
-// Precision tests pinned to TRT-12 court document (process 0001198-34.2025.5.12.0003).
+// Precision tests pinned to a reference labor-court calculation (synthetic process 0004321-40.2025.5.12.0003).
 // Any regression in these values = wrong calculation law.
 describe('labor-calculation-v3 (PDF precision — TRT-12)', () => {
   const pdfInput: LaborCalculationInputV3 = {

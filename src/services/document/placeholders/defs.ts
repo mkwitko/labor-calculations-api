@@ -434,7 +434,7 @@ export const PLACEHOLDER_REGISTRY: PlaceholderDef[] = [
     description: 'Número do processo (CNJ)',
     group: 'caso',
     source: 'case',
-    example: '0001198-34.2025.5.12.0003',
+    example: '0004321-40.2025.5.12.0003',
     resolve: (ctx) => String(ctx.case?.processNumber ?? ''),
   },
   {

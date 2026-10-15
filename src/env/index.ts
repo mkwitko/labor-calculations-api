@@ -43,11 +43,9 @@ const envSchema = z.object({
   R2_ACCESS_KEY_ID: z.string(),
   R2_SECRET_ACCESS_KEY: z.string(),
   R2_BUCKET_NAME: z.string(),
-  // DataJud (CNJ) public API. The default key below is the public key
-  // published by the CNJ for the API Pública; override via env if needed.
-  DATAJUD_API_KEY: z
-    .string()
-    .default('cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=='),
+  // DataJud (CNJ) public API. The key is issued by the CNJ; the integration
+  // fails explicitly (see datajud-service.ts) when it is unset.
+  DATAJUD_API_KEY: z.string().optional(),
   DATAJUD_BASE_URL: z
     .string()
     .default('https://api-publica.datajud.cnj.jus.br'),

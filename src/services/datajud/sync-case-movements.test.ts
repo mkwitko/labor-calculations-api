@@ -12,8 +12,8 @@ beforeEach(async () => {
   await cleanDatabase()
 })
 
-const TRT2 = '1001538-51.2018.5.02.0401'
-const CIVEL = '1000123-45.2024.8.26.0100'
+const TRT2 = '2000456-41.2023.5.02.0999'
+const CIVEL = '1000123-35.2024.8.26.0100'
 
 function movement(
   externalId: string,
