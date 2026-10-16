@@ -24,27 +24,27 @@ describe('assertTestDatabase', () => {
   it('aceita o Postgres local de teste', () => {
     expect(
       withUrl(
-        'postgresql://test:test@localhost:5433/jurispro_test?schema=public',
+        'postgresql://test:test@localhost:5433/labor_calculations_test?schema=public',
       ),
     ).not.toThrow()
   })
 
   it('aceita 127.0.0.1', () => {
     expect(
-      withUrl('postgresql://test:test@127.0.0.1:5433/jurispro_test'),
+      withUrl('postgresql://test:test@127.0.0.1:5433/labor_calculations_test'),
     ).not.toThrow()
   })
 
   it('recusa host remoto', () => {
     expect(
       withUrl(
-        'postgresql://u:p@ep-tiny-river.sa-east-1.aws.neon.tech/jurispro_test',
+        'postgresql://u:p@ep-tiny-river.sa-east-1.aws.neon.tech/labor_calculations_test',
       ),
     ).toThrow(/não é um banco de teste local/)
   })
 
   it('recusa banco local sem sufixo _test', () => {
-    expect(withUrl('postgresql://u:p@localhost:5432/jurispro')).toThrow(
+    expect(withUrl('postgresql://u:p@localhost:5432/labor_calculations')).toThrow(
       /não é um banco de teste local/,
     )
   })

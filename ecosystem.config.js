@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'jurispro-api',
+      name: 'labor-calculations-api',
 
       script: 'dist/server.js',
 

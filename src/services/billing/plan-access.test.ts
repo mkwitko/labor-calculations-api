@@ -253,7 +253,7 @@ describe('assertPlanFitsMembers', () => {
 
     const escritorio = {
       code: 'escritorio' as const,
-      name: 'Jurispro escritorio',
+      name: 'LexLaboral escritorio',
       maxMembers: 1,
       rank: 3,
       currency: 'brl',
@@ -273,7 +273,7 @@ describe('assertPlanFitsMembers', () => {
 
     const solo = {
       code: 'solo' as const,
-      name: 'Jurispro solo',
+      name: 'LexLaboral solo',
       maxMembers: 1,
       rank: 1,
       currency: 'brl',

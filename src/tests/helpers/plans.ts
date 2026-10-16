@@ -25,7 +25,7 @@ export function planPrices(
     currency: 'brl',
     code,
     interval,
-    name: `Jurispro ${code}`,
+    name: `LexLaboral ${code}`,
     maxMembers,
     rank,
     allowsExtraMembers,

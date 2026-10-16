@@ -3,7 +3,7 @@ import { filterOpenApiToV1 } from './filter-openapi'
 
 const SPEC = {
   openapi: '3.0.3',
-  info: { title: 'LexLaboral | Server', version: '2.0.0' },
+  info: { title: 'Labor Calculations API', version: '2.0.0' },
   paths: {
     '/v1/calculations/liquidacao': {
       post: {

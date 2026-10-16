@@ -15,7 +15,7 @@ const envSchema = z.object({
   STRIPE_PRICE_ID_MONTHLY: z.string().optional(),
   STRIPE_PRICE_ID_YEARLY: z.string().optional(),
   STRIPE_PRICE_ID_API: z.string().optional(),
-  STRIPE_API_METER_EVENT: z.string().default('jurispro_api_calculation'),
+  STRIPE_API_METER_EVENT: z.string().default('labor_calculations_api_calculation'),
   STRIPE_TRIAL_DAYS: z.coerce.number().optional(),
   // Signing secret of the Stripe webhook endpoint. Without it the webhook
   // route rejects every request — get it from `stripe listen` in development

@@ -182,7 +182,7 @@ export function toRawExtraPrice(
   const product = price.product
 
   if (typeof product === 'string' || !product) return null
-  if (product.deleted || product.metadata?.jurispro !== 'extra_member') {
+  if (product.deleted || product.metadata?.labor_calculations !== 'extra_member') {
     return null
   }
 
@@ -259,7 +259,7 @@ const offlinePlansPort: PlansPort = {
           currency: 'brl',
           code: plan.code,
           interval,
-          name: `Jurispro ${plan.code}`,
+          name: `LexLaboral ${plan.code}`,
           maxMembers: plan.maxMembers,
           rank: plan.rank,
           allowsExtraMembers: plan.extra,

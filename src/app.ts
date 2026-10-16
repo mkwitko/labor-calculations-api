@@ -84,7 +84,7 @@ app.register(fastifyJwt, {
 app.register(fastifySwagger, {
   openapi: {
     info: {
-      title: 'LexLaboral | Server',
+      title: 'Labor Calculations API',
       version: '2.0.0',
     },
     components: {

@@ -40,7 +40,7 @@ function price(
     currency: 'brl',
     code,
     interval,
-    name: `Jurispro ${code}`,
+    name: `LexLaboral ${code}`,
     maxMembers,
     rank,
     allowsExtraMembers,
@@ -148,7 +148,7 @@ describe('toRawPlanPrice', () => {
   const product = {
     id: 'prod_x',
     object: 'product',
-    name: 'Jurispro Banca',
+    name: 'LexLaboral Banca',
     metadata: { code: 'banca', max_members: '5', rank: '2' },
   }
 
@@ -169,7 +169,7 @@ describe('toRawPlanPrice', () => {
     expect(toRawPlanPrice(stripePrice())).toMatchObject({
       code: 'banca',
       maxMembers: 5,
-      name: 'Jurispro Banca',
+      name: 'LexLaboral Banca',
     })
   })
 

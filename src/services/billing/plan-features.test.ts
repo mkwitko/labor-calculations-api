@@ -80,7 +80,7 @@ describe('checkPlanFeature', () => {
 
     expect(access.allowed).toBe(false)
     expect(access.requiredPlan).toBe('escritorio')
-    expect(access.requiredPlanName).toBe('Jurispro escritorio')
+    expect(access.requiredPlanName).toBe('LexLaboral escritorio')
   })
 
   it('a API pública só entra no plano máximo', async () => {
@@ -143,7 +143,7 @@ describe('assertPlanFeature', () => {
       },
       (error: { statusCode?: number; message?: string }) => {
         expect(error.statusCode).toBe(402)
-        expect(error.message).toContain('Jurispro escritorio')
+        expect(error.message).toContain('LexLaboral escritorio')
       },
     )
   })
